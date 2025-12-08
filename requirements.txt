@@ -1,0 +1,10 @@
+# FlexiView 依赖包
+
+# 核心依赖
+opencv-python>=4.8.0
+numpy>=1.24.0
+screeninfo>=0.8.1
+Pillow>=10.0.0
+
+# 可选：如果需要更多视频格式支持
+# opencv-contrib-python>=4.8.0
