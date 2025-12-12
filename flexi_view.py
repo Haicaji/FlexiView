@@ -263,14 +263,14 @@ class IRCameraController:
         return True
 
     async def stop(self):
-        """停止捕获"""
+        """停止捕获并释放系统资源"""
         self._running = False
         
-        if self._is_recording:
-            self.stop_recording()
-        
         if self._frame_reader is not None:
-            await self._frame_reader.stop_async()
+            try:
+                await self._frame_reader.stop_async()
+            except:
+                pass
             self._frame_reader = None
         
         if self._media_capture is not None:
@@ -605,6 +605,7 @@ class VideoPlayer:
     
     def load_video(self, path):
         """加载视频文件"""
+        self.stop()  # 先停止播放
         self.stop_ir_camera()  # 确保关闭红外摄像头
         if self.cap is not None:
             self.cap.release()
@@ -645,6 +646,7 @@ class VideoPlayer:
     
     def load_camera(self, camera_id=0):
         """加载摄像头"""
+        self.stop()  # 先停止播放
         self.stop_ir_camera()  # 确保关闭红外摄像头
         if self.cap is not None:
             self.cap.release()
@@ -710,15 +712,34 @@ class VideoPlayer:
             return False, f"红外摄像头错误: {str(e)}"
     
     def stop_ir_camera(self):
-        """停止红外摄像头"""
+        """停止红外摄像头并释放系统资源"""
+        # 先设置标志让播放线程退出
+        self.playing = False
+        
+        # 先停止红外控制器（设置 _running = False，让播放线程可以退出）
         if self.ir_controller is not None and self.ir_loop is not None:
             try:
-                self.ir_loop.run_until_complete(self.ir_controller.stop())
+                # 确保事件循环还在运行
+                if not self.ir_loop.is_closed():
+                    self.ir_loop.run_until_complete(self.ir_controller.stop())
+            except Exception as e:
+                print(f"停止红外摄像头时出错: {e}")
+        
+        # 然后等待播放线程结束
+        if self.play_thread is not None:
+            self.play_thread.join(timeout=2)
+            self.play_thread = None
+        
+        # 最后关闭事件循环并清理引用
+        if self.ir_loop is not None:
+            try:
+                if not self.ir_loop.is_closed():
+                    self.ir_loop.close()
             except:
                 pass
-            self.ir_loop.close()
             self.ir_loop = None
-            self.ir_controller = None
+        
+        self.ir_controller = None
     
     def get_ir_devices(self):
         """获取红外摄像头设备列表"""
@@ -782,7 +803,7 @@ class VideoPlayer:
         
         # 红外摄像头模式
         if self.source_type == 'ir_camera' and self.ir_controller is not None:
-            while self.playing and self.ir_controller.is_running:
+            while self.playing and self.ir_controller is not None and self.ir_controller.is_running:
                 if self.paused:
                     time.sleep(0.05)
                     continue
