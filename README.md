@@ -8,7 +8,8 @@
 - 🎬 **视频播放**: 支持 MP4、AVI、MKV、MOV 等常见视频格式
 - 🖼️ **图像显示**: 支持 JPG、PNG、BMP 等图像格式
 - 📷 **摄像头输入**: 支持实时摄像头画面
-- 🔄 **旋转控制**: 支持 0-360° 任意角度旋转
+- � **红外摄像头支持**: 支持 Windows Hello 红外摄像头，包含帧过滤、颜色映射等功能
+- �🔄 **旋转控制**: 支持 0-360° 任意角度旋转
 - 📐 **缩放控制**: 支持 0.1x - 3x 缩放
 - ↔️ **位置控制**: 支持 X/Y 方向位移调整
 - 🎨 **背景颜色**: 可自定义背景颜色（黑色、白色、绿幕等）
@@ -21,6 +22,14 @@
 2. 安装依赖包：
 ```bash
 pip install -r requirements.txt
+```
+
+### 红外摄像头功能（可选）
+
+红外摄像头功能仅在 Windows 平台可用。需要安装额外的 winrt 依赖：
+
+```bash
+pip install winrt-Windows.Devices.Enumeration winrt-Windows.Media.Capture winrt-Windows.Media.Capture.Frames winrt-Windows.Graphics.Imaging winrt-Windows.Foundation winrt-Windows.Foundation.Collections winrt-Windows.Storage.Streams
 ```
 
 ## 使用方法
@@ -44,6 +53,14 @@ python flexi_view.py
 - **打开视频**: 选择本地视频文件
 - **打开图片**: 选择本地图像文件
 - **打开摄像头**: 使用电脑摄像头作为输入源
+- **红外摄像头**: 使用 Windows Hello 红外摄像头（需安装额外依赖）
+
+### 红外摄像头设置
+- **帧过滤**: 选择显示全部帧、仅原始帧（LED关闭）或仅照明帧（LED开启）
+- **颜色映射**: 原始灰度、绿色映射、热力图或 JET 色彩映射
+- **镜像**: 水平翻转画面
+- **拍照**: 保存当前帧为 JPG 图片（保存到 photos 文件夹）
+- **录像**: 录制视频（保存到 videos 文件夹）
 
 ### 显示器
 - 选择要用于显示的显示器
@@ -74,6 +91,7 @@ python flexi_view.py
 - **控制端**: 使用 Tkinter 构建的 GUI 控制面板
 - **显示端**: 使用 OpenCV 的全屏窗口
 - **视频处理**: OpenCV 进行视频读取和图像变换
+- **红外摄像头**: 使用 Windows Runtime API 访问红外帧数据
 - **多线程**: 显示和控制分离，保证流畅性
 
 ## 依赖库
@@ -81,7 +99,9 @@ python flexi_view.py
 - `opencv-python`: 视频/图像处理
 - `numpy`: 数组计算
 - `screeninfo`: 多显示器检测
+- `Pillow`: 图像处理
 - `tkinter`: GUI 界面（Python 内置）
+- `winrt-*`: Windows Runtime 绑定（红外摄像头功能，可选）
 
 ## 注意事项
 
@@ -89,6 +109,8 @@ python flexi_view.py
 2. 如果显示器列表不正确，点击"刷新显示器列表"
 3. 首次运行时先点击"启动显示窗口"，再加载媒体
 4. 某些高分辨率视频可能需要较好的显卡性能
+5. 红外摄像头功能仅支持 Windows 平台
+6. 部分电脑可能没有红外摄像头硬件
 
 ## License
 

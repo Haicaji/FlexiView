@@ -6,5 +6,15 @@ numpy>=1.24.0
 screeninfo>=0.8.1
 Pillow>=10.0.0
 
+# 红外摄像头支持 (仅 Windows 平台)
+# 如果需要使用红外摄像头功能，请安装以下包：
+winrt-Windows.Devices.Enumeration
+winrt-Windows.Media.Capture
+winrt-Windows.Media.Capture.Frames
+winrt-Windows.Graphics.Imaging
+winrt-Windows.Foundation
+winrt-Windows.Foundation.Collections
+winrt-Windows.Storage.Streams
+
 # 可选：如果需要更多视频格式支持
 # opencv-contrib-python>=4.8.0
