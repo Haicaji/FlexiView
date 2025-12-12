@@ -16,7 +16,6 @@ import asyncio
 from enum import Enum
 from threading import Lock
 from queue import Queue, Empty
-from datetime import datetime
 from PIL import Image, ImageTk
 
 # Windows Runtime 红外摄像头支持（仅 Windows 平台可用）
@@ -108,7 +107,6 @@ class IRCameraController:
     - 设备发现和选择
     - 帧捕获和处理
     - 帧过滤和颜色映射
-    - 拍照和录像
     """
 
     def __init__(self):
@@ -132,14 +130,6 @@ class IRCameraController:
         self._frame_filter = IRFrameFilter.NONE
         self._mapping_mode = IRMappingMode.NONE
         self._is_illuminated = False
-        
-        # 录像相关
-        self._is_recording = False
-        self._video_writer = None
-        self._video_path = None
-        
-        # 镜像
-        self._mirror = False
 
     # ==================== 属性 ====================
     
@@ -168,24 +158,12 @@ class IRCameraController:
         return self._current_device_index
 
     @property
-    def is_recording(self) -> bool:
-        return self._is_recording
-
-    @property
     def frame_size(self) -> tuple:
         return (self._frame_width, self._frame_height)
 
     @property
     def is_running(self) -> bool:
         return self._running
-    
-    @property
-    def mirror(self) -> bool:
-        return self._mirror
-    
-    @mirror.setter
-    def mirror(self, value: bool):
-        self._mirror = value
 
     # ==================== 设备管理 ====================
 
@@ -411,11 +389,6 @@ class IRCameraController:
         # 保存最后一帧
         self._last_frame = frame.copy()
         
-        # 录像
-        if self._is_recording and self._video_writer is not None:
-            record_frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            self._video_writer.write(record_frame)
-        
         # 更新队列
         while not self._frame_queue.empty():
             try:
@@ -450,64 +423,6 @@ class IRCameraController:
             return cv2.cvtColor(colored, cv2.COLOR_BGR2BGRA)
         
         return frame
-
-    # ==================== 拍照和录像 ====================
-
-    def take_photo(self, save_dir: str = "photos") -> str:
-        """拍照保存，返回文件路径"""
-        if self._last_frame is None:
-            return None
-        
-        os.makedirs(save_dir, exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filepath = os.path.join(save_dir, f"IR_Photo_{timestamp}.jpg")
-        
-        save_frame = cv2.cvtColor(self._last_frame, cv2.COLOR_BGRA2BGR)
-        cv2.imwrite(filepath, save_frame)
-        
-        return filepath
-
-    def start_recording(self, save_dir: str = "videos", base_fps: int = 15) -> str:
-        """开始录像，返回文件路径"""
-        if self._is_recording:
-            return None
-        
-        os.makedirs(save_dir, exist_ok=True)
-        
-        # 根据帧过滤模式调整帧率
-        if self._frame_filter == IRFrameFilter.NONE:
-            actual_fps = base_fps
-        else:
-            actual_fps = max(base_fps // 2, 7)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filter_suffix = self._frame_filter.display_name
-        self._video_path = os.path.join(save_dir, f"IR_Video_{timestamp}_{filter_suffix}.avi")
-        
-        fourcc = cv2.VideoWriter_fourcc(*'XVID')
-        self._video_writer = cv2.VideoWriter(
-            self._video_path, fourcc, actual_fps,
-            (self._frame_width, self._frame_height)
-        )
-        
-        self._is_recording = True
-        return self._video_path
-
-    def stop_recording(self) -> str:
-        """停止录像，返回文件路径"""
-        if not self._is_recording:
-            return None
-        
-        self._is_recording = False
-        
-        if self._video_writer is not None:
-            self._video_writer.release()
-            self._video_writer = None
-        
-        path = self._video_path
-        self._video_path = None
-        return path
 
 
 class DisplayWindow:
@@ -1042,21 +957,6 @@ class ControlPanel:
             self.ir_color_combo['values'] = ["原始", "绿色", "热力", "JET"]
             self.ir_color_combo.pack(side=tk.LEFT, padx=5)
             self.ir_color_combo.bind("<<ComboboxSelected>>", self.on_ir_color_change)
-            
-            # 镜像
-            self.ir_mirror_var = tk.BooleanVar(value=False)
-            ttk.Checkbutton(self.ir_frame, text="镜像", variable=self.ir_mirror_var,
-                           command=self.on_ir_mirror_change).pack(anchor=tk.W, pady=2)
-            
-            # 拍照和录像
-            ir_btn_frame = ttk.Frame(self.ir_frame)
-            ir_btn_frame.pack(fill=tk.X, pady=5)
-            ttk.Button(ir_btn_frame, text="拍照", command=self.ir_take_photo).pack(side=tk.LEFT, padx=2)
-            self.ir_record_btn = ttk.Button(ir_btn_frame, text="开始录像", command=self.ir_toggle_record)
-            self.ir_record_btn.pack(side=tk.LEFT, padx=2)
-            
-            # 关闭红外摄像头按钮
-            ttk.Button(ir_btn_frame, text="关闭红外摄像头", command=self.close_ir_camera).pack(side=tk.LEFT, padx=2)
         
         # === 显示器选择 ===
         monitor_frame = ttk.LabelFrame(main_frame, text="显示器", padding="5")
@@ -1312,16 +1212,6 @@ class ControlPanel:
         else:
             messagebox.showerror("错误", message)
     
-    def close_ir_camera(self):
-        """关闭红外摄像头"""
-        self.player.stop()
-        self.player.stop_ir_camera()
-        self.file_label.config(text="未选择文件")
-        self.status_label.config(text="红外摄像头已关闭")
-        # 隐藏红外摄像头设置
-        if IR_CAMERA_AVAILABLE:
-            self.ir_frame.pack_forget()
-    
     def on_ir_filter_change(self, event=None):
         """红外摄像头帧过滤改变"""
         if self.player.ir_controller is None:
@@ -1333,41 +1223,9 @@ class ControlPanel:
         """红外摄像头颜色映射改变"""
         if self.player.ir_controller is None:
             return
-        color_map = {"原始": IRMappingMode.NONE, "绿色": IRMappingMode.GREEN, 
+        color_map = {"原始": IRMappingMode.NONE, "绿色": IRMappingMode.GREEN,
                      "热力": IRMappingMode.HEAT, "JET": IRMappingMode.JET}
         self.player.ir_controller.mapping_mode = color_map.get(self.ir_color_var.get(), IRMappingMode.NONE)
-    
-    def on_ir_mirror_change(self):
-        """红外摄像头镜像改变"""
-        if self.player.ir_controller is None:
-            return
-        self.player.ir_controller.mirror = self.ir_mirror_var.get()
-    
-    def ir_take_photo(self):
-        """红外摄像头拍照"""
-        if self.player.ir_controller is None:
-            return
-        path = self.player.ir_controller.take_photo()
-        if path:
-            self.status_label.config(text=f"照片已保存: {os.path.basename(path)}")
-        else:
-            messagebox.showwarning("提示", "拍照失败，没有可用的帧")
-    
-    def ir_toggle_record(self):
-        """红外摄像头录像切换"""
-        if self.player.ir_controller is None:
-            return
-        
-        if self.player.ir_controller.is_recording:
-            path = self.player.ir_controller.stop_recording()
-            if path:
-                self.status_label.config(text=f"录像已保存: {os.path.basename(path)}")
-            self.ir_record_btn.config(text="开始录像")
-        else:
-            path = self.player.ir_controller.start_recording()
-            if path:
-                self.status_label.config(text="正在录像...")
-            self.ir_record_btn.config(text="停止录像")
     
     def toggle_play(self):
         """切换播放/暂停"""
