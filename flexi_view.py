@@ -105,7 +105,7 @@ class IRCameraController:
     
     负责：
     - 设备发现和选择
-    - 帧捕获和处理
+    - 帧捕获和处理x
     - 帧过滤和颜色映射
     """
 
@@ -297,9 +297,6 @@ class IRCameraController:
             # 转换为 BGR 格式
             if frame.shape[2] == 4:  # BGRA
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
-            # 应用镜像
-            if self._mirror:
-                frame = cv2.flip(frame, 1)
         
         return frame
 
