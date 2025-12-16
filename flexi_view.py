@@ -874,6 +874,17 @@ class ControlPanel:
         self.preview_label = None
         self.preview_size = (320, 180)  # 预览窗口大小
         
+        # 辅助矩形框设置
+        self.guide_rect_enabled = False  # 是否启用辅助框
+        self.guide_rect_x = 0  # 辅助框X偏移（相对于显示器中心）
+        self.guide_rect_y = 0  # 辅助框Y偏移
+        self.guide_rect_width = 800  # 辅助框宽度（像素）
+        self.guide_rect_height = 600  # 辅助框高度
+        self.guide_rect_color = "#00FF00"  # 辅助框颜色（绿色）
+        
+        # 方向键步进值（固定为5）
+        self.offset_step = 5
+        
         self.setup_ui()
         
         # 让窗口根据内容自适应大小
@@ -1139,6 +1150,62 @@ class ControlPanel:
         # 用于保存当前预览图像引用（防止被垃圾回收）
         self.preview_photo = None
         
+        # === 辅助矩形框设置 ===
+        guide_frame = ttk.LabelFrame(main_frame, text="辅助定位框 (Shift+方向键调整)", padding="5")
+        guide_frame.pack(fill=tk.X, pady=5)
+        
+        # 启用/禁用
+        guide_enable_frame = ttk.Frame(guide_frame)
+        guide_enable_frame.pack(fill=tk.X, pady=2)
+        self.guide_rect_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(guide_enable_frame, text="显示辅助框", variable=self.guide_rect_var,
+                       command=self.on_guide_rect_toggle).pack(side=tk.LEFT)
+        
+        # 辅助框位置
+        guide_pos_frame = ttk.Frame(guide_frame)
+        guide_pos_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_pos_frame, text="框X:").pack(side=tk.LEFT)
+        self.guide_x_var = tk.IntVar(value=0)
+        ttk.Entry(guide_pos_frame, textvariable=self.guide_x_var, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_pos_frame, from_=-1000, to=1000, variable=self.guide_x_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        guide_pos_frame2 = ttk.Frame(guide_frame)
+        guide_pos_frame2.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_pos_frame2, text="框Y:").pack(side=tk.LEFT)
+        self.guide_y_var = tk.IntVar(value=0)
+        ttk.Entry(guide_pos_frame2, textvariable=self.guide_y_var, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_pos_frame2, from_=-1000, to=1000, variable=self.guide_y_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # 辅助框大小
+        guide_size_frame = ttk.Frame(guide_frame)
+        guide_size_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_size_frame, text="宽:").pack(side=tk.LEFT)
+        self.guide_w_var = tk.IntVar(value=800)
+        ttk.Entry(guide_size_frame, textvariable=self.guide_w_var, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_size_frame, from_=100, to=2000, variable=self.guide_w_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        guide_size_frame2 = ttk.Frame(guide_frame)
+        guide_size_frame2.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_size_frame2, text="高:").pack(side=tk.LEFT)
+        self.guide_h_var = tk.IntVar(value=600)
+        ttk.Entry(guide_size_frame2, textvariable=self.guide_h_var, width=6).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_size_frame2, from_=100, to=2000, variable=self.guide_h_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+        
+        # 绑定方向键
+        self.root.bind("<Up>", self.on_key_up)
+        self.root.bind("<Down>", self.on_key_down)
+        self.root.bind("<Left>", self.on_key_left)
+        self.root.bind("<Right>", self.on_key_right)
+        # 绑定Shift+方向键调整辅助框
+        self.root.bind("<Shift-Up>", self.on_shift_key_up)
+        self.root.bind("<Shift-Down>", self.on_shift_key_down)
+        self.root.bind("<Shift-Left>", self.on_shift_key_left)
+        self.root.bind("<Shift-Right>", self.on_shift_key_right)
+        
         # === 状态栏 ===
         self.status_label = ttk.Label(main_frame, text="就绪")
         self.status_label.pack(fill=tk.X, pady=5)
@@ -1334,7 +1401,13 @@ class ControlPanel:
             'mirror_h': self.display.mirror_h,
             'mirror_v': self.display.mirror_v,
             'background_color': list(self.display.background_color),
-            'monitor_index': self.display.monitor_index
+            'monitor_index': self.display.monitor_index,
+            # 辅助框设置
+            'guide_rect_enabled': self.guide_rect_enabled,
+            'guide_rect_x': self.guide_rect_x,
+            'guide_rect_y': self.guide_rect_y,
+            'guide_rect_width': self.guide_rect_width,
+            'guide_rect_height': self.guide_rect_height
         }
     
     def apply_config(self, config):
@@ -1362,6 +1435,22 @@ class ControlPanel:
         if 'monitor_index' in config:
             self.display.update_monitor(config['monitor_index'])
             self.update_monitor_list()
+        # 辅助框设置
+        if 'guide_rect_enabled' in config:
+            self.guide_rect_enabled = config['guide_rect_enabled']
+            self.guide_rect_var.set(config['guide_rect_enabled'])
+        if 'guide_rect_x' in config:
+            self.guide_rect_x = config['guide_rect_x']
+            self.guide_x_var.set(config['guide_rect_x'])
+        if 'guide_rect_y' in config:
+            self.guide_rect_y = config['guide_rect_y']
+            self.guide_y_var.set(config['guide_rect_y'])
+        if 'guide_rect_width' in config:
+            self.guide_rect_width = config['guide_rect_width']
+            self.guide_w_var.set(config['guide_rect_width'])
+        if 'guide_rect_height' in config:
+            self.guide_rect_height = config['guide_rect_height']
+            self.guide_h_var.set(config['guide_rect_height'])
     
     def save_config(self):
         """保存配置到文件"""
@@ -1446,6 +1535,72 @@ class ControlPanel:
             self.preview_canvas.config(width=w, height=h)
         except:
             pass
+    
+    def on_guide_rect_toggle(self):
+        """切换辅助框显示"""
+        self.guide_rect_enabled = self.guide_rect_var.get()
+    
+    def on_guide_pos_change(self, value=None):
+        """辅助框位置改变（滑块）"""
+        self.guide_rect_x = self.guide_x_var.get()
+        self.guide_rect_y = self.guide_y_var.get()
+    
+    def on_guide_size_change(self, value=None):
+        """辅助框大小改变（滑块）"""
+        self.guide_rect_width = self.guide_w_var.get()
+        self.guide_rect_height = self.guide_h_var.get()
+    
+    def on_key_up(self, event=None):
+        """方向键上 - 减少Y偏移"""
+        new_y = self.offset_y_var.get() - self.offset_step
+        self.offset_y_var.set(new_y)
+        self.display.offset_y = new_y
+    
+    def on_key_down(self, event=None):
+        """方向键下 - 增加Y偏移"""
+        new_y = self.offset_y_var.get() + self.offset_step
+        self.offset_y_var.set(new_y)
+        self.display.offset_y = new_y
+    
+    def on_key_left(self, event=None):
+        """方向键左 - 减少X偏移"""
+        new_x = self.offset_x_var.get() - self.offset_step
+        self.offset_x_var.set(new_x)
+        self.display.offset_x = new_x
+    
+    def on_key_right(self, event=None):
+        """方向键右 - 增加X偏移"""
+        new_x = self.offset_x_var.get() + self.offset_step
+        self.offset_x_var.set(new_x)
+        self.display.offset_x = new_x
+    
+    def on_shift_key_up(self, event=None):
+        """Shift+上 - 减少辅助框Y偏移"""
+        new_y = self.guide_y_var.get() - self.offset_step
+        self.guide_y_var.set(new_y)
+        self.guide_rect_y = new_y
+        return "break"
+    
+    def on_shift_key_down(self, event=None):
+        """Shift+下 - 增加辅助框Y偏移"""
+        new_y = self.guide_y_var.get() + self.offset_step
+        self.guide_y_var.set(new_y)
+        self.guide_rect_y = new_y
+        return "break"
+    
+    def on_shift_key_left(self, event=None):
+        """Shift+左 - 减少辅助框X偏移"""
+        new_x = self.guide_x_var.get() - self.offset_step
+        self.guide_x_var.set(new_x)
+        self.guide_rect_x = new_x
+        return "break"
+    
+    def on_shift_key_right(self, event=None):
+        """Shift+右 - 增加辅助框X偏移"""
+        new_x = self.guide_x_var.get() + self.offset_step
+        self.guide_x_var.set(new_x)
+        self.guide_rect_x = new_x
+        return "break"
     
     def update_preview(self):
         """更新预览画面"""
@@ -1545,6 +1700,30 @@ class ControlPanel:
                 self.preview_canvas.delete("all")
                 self.preview_canvas.create_image(preview_w//2, preview_h//2, 
                                                  image=self.preview_photo, anchor=tk.CENTER)
+                
+                # 绘制辅助矩形框
+                if self.guide_rect_enabled and self.preview_show_processed:
+                    # 计算辅助框在预览中的位置和大小
+                    monitor_w = self.display.target_monitor.width
+                    monitor_h = self.display.target_monitor.height
+                    preview_scale = min(preview_w / monitor_w, preview_h / monitor_h)
+                    
+                    # 辅助框中心相对于显示器中心的偏移
+                    rect_center_x = preview_w / 2 + self.guide_rect_x * preview_scale
+                    rect_center_y = preview_h / 2 + self.guide_rect_y * preview_scale
+                    rect_w = self.guide_rect_width * preview_scale
+                    rect_h = self.guide_rect_height * preview_scale
+                    
+                    # 计算矩形的左上角和右下角
+                    rect_x1 = rect_center_x - rect_w / 2
+                    rect_y1 = rect_center_y - rect_h / 2
+                    rect_x2 = rect_center_x + rect_w / 2
+                    rect_y2 = rect_center_y + rect_h / 2
+                    
+                    self.preview_canvas.create_rectangle(
+                        rect_x1, rect_y1, rect_x2, rect_y2,
+                        outline=self.guide_rect_color, width=2
+                    )
             else:
                 # 无画面时显示黑色
                 self.preview_canvas.delete("all")
