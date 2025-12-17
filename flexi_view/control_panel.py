@@ -47,6 +47,10 @@ class ControlPanel:
         self.preview_label = None
         self.preview_size = (800, 450)  # 预览窗口大小（更大的默认值）
         
+        # 进度条拖动状态
+        self.seeking = False
+        self.was_playing_before_seek = False
+        
         # 辅助矩形框设置
         self.guide_rect_enabled = False  # 是否启用辅助框
         self.guide_rect_x = 0  # 辅助框X偏移（相对于显示器中心）
@@ -294,18 +298,26 @@ class ControlPanel:
         self.play_btn = ttk.Button(play_btn_frame, text="▶ 播放", command=self.toggle_play)
         self.play_btn.pack(side=tk.LEFT, padx=2)
         
-        ttk.Button(play_btn_frame, text="■ 停止", command=self.stop_play).pack(side=tk.LEFT, padx=2)
-        
         self.loop_var = tk.BooleanVar(value=True)
         ttk.Checkbutton(play_btn_frame, text="循环播放", variable=self.loop_var,
                        command=self.toggle_loop).pack(side=tk.LEFT, padx=10)
         
         # 进度条
+        progress_frame = ttk.Frame(play_frame)
+        progress_frame.pack(fill=tk.X, pady=5)
+        
         self.progress_var = tk.DoubleVar(value=0)
-        self.progress_scale = ttk.Scale(play_frame, from_=0, to=100, 
-                                        variable=self.progress_var, orient=tk.HORIZONTAL)
-        self.progress_scale.pack(fill=tk.X, pady=5)
-        self.progress_scale.bind("<ButtonRelease-1>", self.on_seek)
+        self.progress_scale = tk.Scale(progress_frame, from_=0, to=100, 
+                                       variable=self.progress_var, orient=tk.HORIZONTAL,
+                                       showvalue=False, sliderlength=15, length=200)
+        self.progress_scale.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 5))
+        self.progress_scale.bind("<Button-1>", self.on_seek_start)
+        self.progress_scale.bind("<ButtonRelease-1>", self.on_seek_end)
+        self.progress_scale.bind("<B1-Motion>", self.on_seeking)
+        
+        # 时间标签
+        self.time_label = ttk.Label(progress_frame, text="0/0", width=12)
+        self.time_label.pack(side=tk.LEFT)
         
         # === 变换控制 ===
         transform_frame = ttk.LabelFrame(main_frame, text="变换控制", padding="5")
@@ -640,24 +652,46 @@ class ControlPanel:
     # ==================== 播放控制 ====================
     
     def toggle_play(self):
-        """播放"""
-        self.player.play()
-    
-    def stop_play(self):
-        """停止播放"""
-        self.player.stop()
-        self.play_btn.config(text="▶ 播放")
-        self.progress_var.set(0)
+        """切换播放/停止状态"""
+        if self.player.playing:
+            # 正在播放，停止
+            self.player.stop()
+            self.play_btn.config(text="▶ 播放")
+        else:
+            # 未播放，开始播放
+            self.player.play()
+            self.play_btn.config(text="■ 停止")
+            # 更新进度条范围
+            if self.player.source_type == 'video' and self.player.total_frames > 0:
+                self.progress_scale.config(to=self.player.total_frames)
     
     def toggle_loop(self):
         """切换循环播放"""
         self.player.loop = self.loop_var.get()
     
-    def on_seek(self, event):
-        """进度条拖动"""
+    def on_seek_start(self, event):
+        """开始拖动进度条"""
+        self.seeking = True
+        # 记录拖动前的播放状态，并暂停
+        self.was_playing_before_seek = self.player.playing
+        if self.player.playing:
+            self.player.pause()
+    
+    def on_seeking(self, event):
+        """正在拖动进度条 - 实时预览"""
         if self.player.source_type == 'video':
-            frame_idx = int(self.progress_var.get())
+            frame_idx = int(self.progress_scale.get())
             self.player.seek(frame_idx)
+    
+    def on_seek_end(self, event):
+        """结束拖动进度条"""
+        if self.player.source_type == 'video':
+            frame_idx = int(self.progress_scale.get())
+            self.player.seek(frame_idx)
+        self.seeking = False
+        # 如果之前在播放，恢复播放
+        if hasattr(self, 'was_playing_before_seek') and self.was_playing_before_seek:
+            self.player.resume()
     
     # ==================== 变换控制 ====================
     
@@ -1087,8 +1121,23 @@ class ControlPanel:
     
     def update_ui(self):
         """定时更新UI"""
-        if self.player.source_type == 'video' and self.player.playing:
-            self.progress_var.set(self.player.current_frame_idx)
+        # 更新播放按钮状态
+        if self.player.playing:
+            self.play_btn.config(text="■ 停止")
+        else:
+            self.play_btn.config(text="▶ 播放")
+        
+        # 更新视频进度条和时间标签（拖动时不更新进度条）
+        if self.player.source_type == 'video':
+            if self.player.total_frames > 0:
+                self.progress_scale.config(to=self.player.total_frames)
+            # 只有在不拖动时才更新进度条位置
+            if not self.seeking:
+                self.progress_var.set(self.player.current_frame_idx)
+            # 更新时间标签（显示帧数）
+            self.time_label.config(text=f"{self.player.current_frame_idx}/{self.player.total_frames}")
+        else:
+            self.time_label.config(text="--/--")
         
         self.root.after(100, self.update_ui)
     

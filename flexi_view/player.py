@@ -209,9 +209,7 @@ class VideoPlayer:
         self.playing = False
         if self.play_thread is not None:
             self.play_thread.join(timeout=1)
-        if self.cap is not None and self.source_type == 'video':
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-            self.current_frame_idx = 0
+        # 不重置 current_frame_idx，不回到开头
     
     def seek(self, frame_idx):
         """跳转到指定帧"""
