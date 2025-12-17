@@ -6,7 +6,7 @@
 import cv2
 import numpy as np
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, colorchooser
 import threading
 import screeninfo
 import os
@@ -382,10 +382,18 @@ class ControlPanel:
         bg_btn_frame = ttk.Frame(bg_frame)
         bg_btn_frame.pack(fill=tk.X)
         
-        ttk.Button(bg_btn_frame, text="黑色", command=lambda: self.set_bg_color(0, 0, 0)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bg_btn_frame, text="白色", command=lambda: self.set_bg_color(255, 255, 255)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bg_btn_frame, text="绿色", command=lambda: self.set_bg_color(0, 255, 0)).pack(side=tk.LEFT, padx=2)
-        ttk.Button(bg_btn_frame, text="蓝色", command=lambda: self.set_bg_color(255, 0, 0)).pack(side=tk.LEFT, padx=2)
+        # 颜色预览方块
+        self.bg_color_preview = tk.Canvas(bg_btn_frame, width=30, height=25, bg='black', 
+                                          highlightthickness=1, highlightbackground='gray')
+        self.bg_color_preview.pack(side=tk.LEFT, padx=2)
+        
+        # 选择颜色按钮
+        ttk.Button(bg_btn_frame, text="选择颜色", command=self.choose_bg_color).pack(side=tk.LEFT, padx=2)
+        
+        # 快捷颜色按钮
+        ttk.Button(bg_btn_frame, text="黑", width=3, command=lambda: self.set_bg_color(0, 0, 0)).pack(side=tk.LEFT, padx=1)
+        ttk.Button(bg_btn_frame, text="白", width=3, command=lambda: self.set_bg_color(255, 255, 255)).pack(side=tk.LEFT, padx=1)
+        ttk.Button(bg_btn_frame, text="绿", width=3, command=lambda: self.set_bg_color(0, 255, 0)).pack(side=tk.LEFT, padx=1)
         
         # === 配置保存/加载 ===
         config_frame = ttk.LabelFrame(main_frame, text="配置管理", padding="5")
@@ -759,9 +767,23 @@ class ControlPanel:
         self.rotation_var.set(angle)
         self.display.rotation = angle
     
-    def set_bg_color(self, b, g, r):
-        """设置背景颜色"""
-        self.display.background_color = (b, g, r)
+    def set_bg_color(self, r, g, b):
+        """设置背景颜色 (RGB格式输入，内部转BGR存储)"""
+        self.display.background_color = (b, g, r)  # OpenCV使用BGR格式
+        # 更新颜色预览
+        hex_color = f'#{r:02x}{g:02x}{b:02x}'
+        self.bg_color_preview.config(bg=hex_color)
+    
+    def choose_bg_color(self):
+        """打开颜色选择器选择背景颜色"""
+        # 获取当前颜色作为初始值
+        b, g, r = self.display.background_color
+        initial_color = f'#{r:02x}{g:02x}{b:02x}'
+        
+        color = colorchooser.askcolor(color=initial_color, title="选择背景颜色")
+        if color[0] is not None:
+            r, g, b = [int(c) for c in color[0]]
+            self.set_bg_color(r, g, b)
     
     def reset_transform(self):
         """重置所有变换"""
@@ -821,6 +843,10 @@ class ControlPanel:
             self.display.mirror_v = config['mirror_v']
         if 'background_color' in config:
             self.display.background_color = tuple(config['background_color'])
+            # 更新颜色预览
+            b, g, r = self.display.background_color
+            hex_color = f'#{r:02x}{g:02x}{b:02x}'
+            self.bg_color_preview.config(bg=hex_color)
         if 'monitor_index' in config:
             self.display.update_monitor(config['monitor_index'])
             self.update_monitor_list()
