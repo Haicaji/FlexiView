@@ -503,29 +503,30 @@ class ControlPanel:
     # ==================== 摄像头管理 ====================
     
     def refresh_cameras(self):
-        """刷新RGB摄像头列表"""
+        """刷新RGB摄像头列表（OpenCV暴力检测+WMI FriendlyName）"""
         self.available_cameras = []
-        
-        # 使用 PowerShell 获取摄像头名称列表
-        camera_names = []
+        # 先用WMI查FriendlyName
+        camera_names = {}
         try:
-            import subprocess
-            result = subprocess.run(
-                ['powershell', '-Command', 
-                 'Get-PnpDevice -Class Camera -Status OK | Select-Object -ExpandProperty FriendlyName'],
-                capture_output=True, text=True, timeout=5,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            if result.returncode == 0:
-                camera_names = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
+            import win32com.client
+            wmi = win32com.client.GetObject("winmgmts:")
+            for cam in wmi.InstancesOf("Win32_PnPEntity"):
+                if cam.Service and cam.Service.lower() in ("usbvideo", "vid", "stream"):
+                    name = cam.Name or cam.Caption
+                    camera_names[name] = True
         except Exception:
-            pass
-        
-        # 根据获取到的摄像头数量来确定扫描范围
-        if camera_names:
-            for i, name in enumerate(camera_names):
-                self.available_cameras.append({'id': i, 'name': name})
-        
+            camera_names = {}
+        # OpenCV暴力检测0~10
+        found = 0
+        for idx in range(0, 11):
+            cap = cv2.VideoCapture(idx, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                # 尝试用WMI FriendlyName，否则用编号
+                name = f"摄像头{idx}"
+                # 这里无法直接对应索引和WMI名称，只能用编号
+                self.available_cameras.append({'id': idx, 'name': name})
+                found += 1
+                cap.release()
         if self.available_cameras:
             values = [cam['name'] for cam in self.available_cameras]
             self.camera_combo['values'] = values
@@ -533,7 +534,6 @@ class ControlPanel:
         else:
             self.camera_combo['values'] = ["未检测到摄像头"]
             self.camera_var.set("未检测到摄像头")
-        
         self.status_label.config(text=f"检测到 {len(self.available_cameras)} 个RGB摄像头")
     
     def open_selected_camera(self):

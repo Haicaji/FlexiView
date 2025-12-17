@@ -73,16 +73,29 @@ class VideoPlayer:
         return True
     
     def load_camera(self, camera_id=0):
-        """加载摄像头"""
+        """加载摄像头，并自动检测分辨率"""
         self.stop()  # 先停止播放
         self.stop_ir_camera()  # 确保关闭红外摄像头
         if self.cap is not None:
             self.cap.release()
-        
+
         self.cap = cv2.VideoCapture(camera_id)
         if not self.cap.isOpened():
             return False
-        
+
+        # 自动检测支持的最大分辨率
+        # 常见分辨率从高到低尝试
+        common_res = [
+            (1920, 1080), (1280, 720), (1024, 576), (800, 600), (640, 480)
+        ]
+        for w, h in common_res:
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+            actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            if abs(actual_w - w) < 10 and abs(actual_h - h) < 10:
+                break
+
         self.fps = 30
         self.source_type = 'camera'
         return True
