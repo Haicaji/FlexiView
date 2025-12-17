@@ -491,86 +491,11 @@ class ControlPanel:
     # ==================== 摄像头管理 ====================
     
     def refresh_cameras(self):
-        """刷新RGB摄像头列表 - 通过系统API直接枚举设备"""
+        """刷新RGB摄像头列表"""
         self.available_cameras = []
         
-        try:
-            import subprocess
-            # 使用 PowerShell + WMI 直接枚举视频输入设备（DirectShow设备）
-            # 这会返回设备的索引和名称，无需暴力扫描
-            ps_script = '''
-            Add-Type -TypeDefinition @"
-            using System;
-            using System.Runtime.InteropServices;
-            using System.Runtime.InteropServices.ComTypes;
-            
-            [ComImport, Guid("29840822-5B84-11D0-BD3B-00A0C911CE86")]
-            public class SystemDeviceEnum { }
-            
-            [ComImport, Guid("29840820-5B84-11D0-BD3B-00A0C911CE86"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-            public interface ICreateDevEnum {
-                int CreateClassEnumerator([In] ref Guid type, out IEnumMoniker enumMoniker, int flags);
-            }
-            
-            public class DirectShowDevices {
-                public static string[] GetVideoInputDevices() {
-                    var devices = new System.Collections.Generic.List<string>();
-                    var CLSID_VideoInputDeviceCategory = new Guid("860BB310-5D01-11D0-BD3B-00A0C911CE86");
-                    var devEnum = (ICreateDevEnum)new SystemDeviceEnum();
-                    IEnumMoniker enumMoniker;
-                    if (devEnum.CreateClassEnumerator(ref CLSID_VideoInputDeviceCategory, out enumMoniker, 0) == 0) {
-                        var moniker = new IMoniker[1];
-                        while (enumMoniker.Next(1, moniker, IntPtr.Zero) == 0) {
-                            IPropertyBag propertyBag;
-                            Guid bagId = typeof(IPropertyBag).GUID;
-                            moniker[0].BindToStorage(null, null, ref bagId, out object bagObj);
-                            propertyBag = (IPropertyBag)bagObj;
-                            object val;
-                            propertyBag.Read("FriendlyName", out val, null);
-                            devices.Add(val.ToString());
-                            Marshal.ReleaseComObject(moniker[0]);
-                        }
-                    }
-                    return devices.ToArray();
-                }
-            }
-"@
-            $devices = [DirectShowDevices]::GetVideoInputDevices()
-            for ($i = 0; $i -lt $devices.Count; $i++) {
-                Write-Output "$i|$($devices[$i])"
-            }
-            '''
-            result = subprocess.run(
-                ['powershell', '-Command', ps_script],
-                capture_output=True, text=True, timeout=10,
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                for line in result.stdout.strip().split('\n'):
-                    line = line.strip()
-                    if '|' in line:
-                        parts = line.split('|', 1)
-                        idx = int(parts[0])
-                        name = parts[1]
-                        self.available_cameras.append({'id': idx, 'name': name})
-        except Exception:
-            # 如果系统枚举失败，回退到简单的 PnP 设备查询
-            self._refresh_cameras_fallback()
-            return
-        
-        if self.available_cameras:
-            values = [cam['name'] for cam in self.available_cameras]
-            self.camera_combo['values'] = values
-            self.camera_combo.current(0)
-        else:
-            self.camera_combo['values'] = ["未检测到摄像头"]
-            self.camera_var.set("未检测到摄像头")
-        
-        self.status_label.config(text=f"检测到 {len(self.available_cameras)} 个RGB摄像头")
-    
-    def _refresh_cameras_fallback(self):
-        """回退方案：使用PnP设备查询"""
-        self.available_cameras = []
+        # 使用 PowerShell 获取摄像头名称列表
+        camera_names = []
         try:
             import subprocess
             result = subprocess.run(
@@ -580,11 +505,14 @@ class ControlPanel:
                 creationflags=subprocess.CREATE_NO_WINDOW
             )
             if result.returncode == 0:
-                names = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
-                for i, name in enumerate(names):
-                    self.available_cameras.append({'id': i, 'name': name})
+                camera_names = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
         except Exception:
             pass
+        
+        # 根据获取到的摄像头数量来确定扫描范围
+        if camera_names:
+            for i, name in enumerate(camera_names):
+                self.available_cameras.append({'id': i, 'name': name})
         
         if self.available_cameras:
             values = [cam['name'] for cam in self.available_cameras]
