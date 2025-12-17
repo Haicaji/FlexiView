@@ -91,6 +91,22 @@ python flexi_view.py
 - **红外摄像头**: 使用 Windows Runtime API 访问红外帧数据
 - **多线程**: 显示和控制分离，保证流畅性
 
+## 项目结构
+
+```
+FlexiView/
+├── flexi_view.py           # 主入口文件
+├── flexi_view/             # 核心模块包
+│   ├── __init__.py         # 包初始化和导出
+│   ├── control_panel.py    # GUI 控制面板
+│   ├── display.py          # 显示窗口管理
+│   ├── player.py           # 视频/图像/摄像头播放器
+│   └── ir_camera.py        # 红外摄像头控制
+├── requirements.txt        # 依赖库
+├── flexi_view_config.json  # 快速保存的配置文件
+└── README.md               # 项目说明
+```
+
 ## 依赖库
 
 - `opencv-python`: 视频/图像处理
