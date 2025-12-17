@@ -45,7 +45,7 @@ class ControlPanel:
         # 预览相关
         self.preview_show_processed = True  # True显示处理后，False显示原始
         self.preview_label = None
-        self.preview_size = (480, 270)  # 预览窗口大小（更大的默认值）
+        self.preview_size = (800, 450)  # 预览窗口大小（更大的默认值）
         
         # 辅助矩形框设置
         self.guide_rect_enabled = False  # 是否启用辅助框
@@ -60,26 +60,35 @@ class ControlPanel:
         
         self.setup_ui()
         
-        # 获取屏幕大小
+        # 让窗口根据内容自适应大小
+        self.root.update_idletasks()
+        
+        # 获取内容所需的大小
+        req_width = self.root.winfo_reqwidth()
+        req_height = self.root.winfo_reqheight()
+        
+        # 获取屏幕大小，限制最大尺寸
         monitors = screeninfo.get_monitors()
         if len(monitors) > 0:
             screen_height = monitors[0].height
             screen_width = monitors[0].width
+            max_height = int(screen_height * 0.9)
+            max_width = int(screen_width * 0.9)
             
-            # 设置合理的初始窗口大小（高度最大化）
-            initial_width = min(500, int(screen_width * 0.4))
-            initial_height = int(screen_height * 0.95)  # 高度接近全屏
+            # 设置窗口大小（不超过屏幕限制）
+            final_width = min(req_width + 30, max_width)
+            final_height = min(req_height + 20, max_height)
             
-            # 窗口水平居中，垂直靠上
-            pos_x = monitors[0].x + (screen_width - initial_width) // 2
-            pos_y = monitors[0].y + 10
+            # 窗口居中
+            pos_x = monitors[0].x + (screen_width - final_width) // 2
+            pos_y = monitors[0].y + (screen_height - final_height) // 2
             
-            self.root.geometry(f"{initial_width}x{initial_height}+{pos_x}+{pos_y}")
+            self.root.geometry(f"{final_width}x{final_height}+{pos_x}+{pos_y}")
         else:
-            self.root.geometry("500x900")
+            self.root.geometry(f"{req_width + 30}x{req_height + 20}")
         
         # 设置最小尺寸
-        self.root.minsize(450, 400)
+        self.root.minsize(800, 500)
         
         # 启动预览更新
         self.update_preview()
@@ -95,34 +104,98 @@ class ControlPanel:
     
     def setup_ui(self):
         """设置用户界面"""
-        # 创建 Canvas 和滚动条实现可滚动界面
-        self.main_canvas = tk.Canvas(self.root)
-        scrollbar = ttk.Scrollbar(self.root, orient="vertical", command=self.main_canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.main_canvas, padding="10")
+        # 创建主容器 - 左右两栏布局
+        main_container = ttk.Frame(self.root)
+        main_container.pack(fill=tk.BOTH, expand=True)
         
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
-        )
+        # === 左侧：预览区域 ===
+        left_frame = ttk.Frame(main_container, padding="5")
+        left_frame.pack(side=tk.LEFT, fill=tk.BOTH)
         
-        self.canvas_window = self.main_canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        self.main_canvas.configure(yscrollcommand=scrollbar.set)
+        # 预览窗口
+        preview_frame = ttk.LabelFrame(left_frame, text="预览", padding="5")
+        preview_frame.pack(fill=tk.BOTH, expand=True)
         
-        # 当 Canvas 大小变化时，调整内部框架宽度
-        def on_canvas_configure(event):
-            self.main_canvas.itemconfig(self.canvas_window, width=event.width)
-        self.main_canvas.bind("<Configure>", on_canvas_configure)
+        preview_ctrl_frame = ttk.Frame(preview_frame)
+        preview_ctrl_frame.pack(fill=tk.X, pady=2)
         
-        # 鼠标滚轮支持
-        def on_mousewheel(event):
-            self.main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
-        self.main_canvas.bind_all("<MouseWheel>", on_mousewheel)
+        self.preview_mode_var = tk.StringVar(value="处理后")
+        self.preview_toggle_btn = ttk.Button(preview_ctrl_frame, text="显示: 处理后", 
+                                              command=self.toggle_preview_mode)
+        self.preview_toggle_btn.pack(side=tk.LEFT, padx=2)
         
-        scrollbar.pack(side="right", fill="y")
-        self.main_canvas.pack(side="left", fill="both", expand=True)
+        # 预览大小滑动条（固定16:9比例）
+        ttk.Label(preview_ctrl_frame, text="大小:").pack(side=tk.LEFT, padx=(10, 2))
+        self.preview_scale_var = tk.IntVar(value=800)  # 宽度值，默认最大
+        self.preview_scale_slider = ttk.Scale(preview_ctrl_frame, from_=320, to=800, 
+                                               variable=self.preview_scale_var,
+                                               orient=tk.HORIZONTAL, length=120,
+                                               command=self.on_preview_scale_change)
+        self.preview_scale_slider.pack(side=tk.LEFT, padx=2)
+        self.preview_size_label = ttk.Label(preview_ctrl_frame, text="800x450")
+        self.preview_size_label.pack(side=tk.LEFT, padx=2)
         
-        # 主框架 (使用 scrollable_frame 替代原来的 main_frame)
-        main_frame = self.scrollable_frame
+        self.preview_canvas = tk.Canvas(preview_frame, width=800, height=450, bg='black')
+        self.preview_canvas.pack(pady=5)
+        
+        self.preview_photo = None
+        
+        # 辅助框控制（放在预览下方）
+        guide_frame = ttk.LabelFrame(left_frame, text="辅助定位框 (Shift+方向键)", padding="5")
+        guide_frame.pack(fill=tk.X, pady=5)
+        
+        guide_enable_frame = ttk.Frame(guide_frame)
+        guide_enable_frame.pack(fill=tk.X, pady=2)
+        self.guide_rect_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(guide_enable_frame, text="显示辅助框", variable=self.guide_rect_var,
+                       command=self.on_guide_rect_toggle).pack(side=tk.LEFT)
+        
+        # X位置
+        guide_x_frame = ttk.Frame(guide_frame)
+        guide_x_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_x_frame, text="X:").pack(side=tk.LEFT)
+        self.guide_x_var = tk.IntVar(value=0)
+        ttk.Entry(guide_x_frame, textvariable=self.guide_x_var, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_x_frame, from_=-1000, to=1000, variable=self.guide_x_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # Y位置
+        guide_y_frame = ttk.Frame(guide_frame)
+        guide_y_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_y_frame, text="Y:").pack(side=tk.LEFT)
+        self.guide_y_var = tk.IntVar(value=0)
+        ttk.Entry(guide_y_frame, textvariable=self.guide_y_var, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_y_frame, from_=-1000, to=1000, variable=self.guide_y_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # 宽度
+        guide_w_frame = ttk.Frame(guide_frame)
+        guide_w_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_w_frame, text="宽:").pack(side=tk.LEFT)
+        self.guide_w_var = tk.IntVar(value=800)
+        ttk.Entry(guide_w_frame, textvariable=self.guide_w_var, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_w_frame, from_=100, to=2000, variable=self.guide_w_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # 高度
+        guide_h_frame = ttk.Frame(guide_frame)
+        guide_h_frame.pack(fill=tk.X, pady=2)
+        ttk.Label(guide_h_frame, text="高:").pack(side=tk.LEFT)
+        self.guide_h_var = tk.IntVar(value=600)
+        ttk.Entry(guide_h_frame, textvariable=self.guide_h_var, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Scale(guide_h_frame, from_=100, to=2000, variable=self.guide_h_var,
+                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True)
+        
+        # 状态栏
+        self.status_label = ttk.Label(left_frame, text="就绪")
+        self.status_label.pack(fill=tk.X, pady=5)
+        
+        # === 右侧：设置区域 ===
+        right_frame = ttk.Frame(main_container, padding="5")
+        right_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        
+        # 右侧设置框架
+        main_frame = right_frame
         
         # === 显示源（合并媒体源和摄像头选择）===
         source_frame = ttk.LabelFrame(main_frame, text="显示源", padding="5")
@@ -210,31 +283,6 @@ class ControlPanel:
         ttk.Button(monitor_btn_frame, text="刷新列表", command=self.update_monitor_list).pack(side=tk.LEFT, padx=2)
         self.display_btn = ttk.Button(monitor_btn_frame, text="启动显示窗口", command=self.toggle_display)
         self.display_btn.pack(side=tk.LEFT, padx=2)
-        
-        # === 预览窗口（放在显示器选择之后）===
-        preview_frame = ttk.LabelFrame(main_frame, text="预览", padding="5")
-        preview_frame.pack(fill=tk.X, pady=5)
-        
-        preview_ctrl_frame = ttk.Frame(preview_frame)
-        preview_ctrl_frame.pack(fill=tk.X, pady=2)
-        
-        self.preview_mode_var = tk.StringVar(value="处理后")
-        self.preview_toggle_btn = ttk.Button(preview_ctrl_frame, text="显示: 处理后", 
-                                              command=self.toggle_preview_mode)
-        self.preview_toggle_btn.pack(side=tk.LEFT, padx=2)
-        
-        ttk.Label(preview_ctrl_frame, text="预览大小:").pack(side=tk.LEFT, padx=(10, 2))
-        self.preview_size_var = tk.StringVar(value="480x270")
-        preview_size_combo = ttk.Combobox(preview_ctrl_frame, textvariable=self.preview_size_var, 
-                                          state="readonly", width=10)
-        preview_size_combo['values'] = ["320x180", "480x270", "640x360"]
-        preview_size_combo.pack(side=tk.LEFT, padx=2)
-        preview_size_combo.bind("<<ComboboxSelected>>", self.on_preview_size_change)
-        
-        self.preview_canvas = tk.Canvas(preview_frame, width=480, height=270, bg='black')
-        self.preview_canvas.pack(pady=5)
-        
-        self.preview_photo = None
         
         # === 播放控制 ===
         play_frame = ttk.LabelFrame(main_frame, text="播放控制", padding="5")
@@ -351,48 +399,6 @@ class ControlPanel:
         ttk.Button(config_btn_frame, text="快速保存", command=self.quick_save_config).pack(side=tk.LEFT, padx=2)
         ttk.Button(config_btn_frame, text="快速加载", command=self.quick_load_config).pack(side=tk.LEFT, padx=2)
         
-        # === 辅助矩形框设置 ===
-        guide_frame = ttk.LabelFrame(main_frame, text="辅助定位框 (Shift+方向键调整)", padding="5")
-        guide_frame.pack(fill=tk.X, pady=5)
-        
-        guide_enable_frame = ttk.Frame(guide_frame)
-        guide_enable_frame.pack(fill=tk.X, pady=2)
-        self.guide_rect_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(guide_enable_frame, text="显示辅助框", variable=self.guide_rect_var,
-                       command=self.on_guide_rect_toggle).pack(side=tk.LEFT)
-        
-        guide_pos_frame = ttk.Frame(guide_frame)
-        guide_pos_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(guide_pos_frame, text="框X:").pack(side=tk.LEFT)
-        self.guide_x_var = tk.IntVar(value=0)
-        ttk.Entry(guide_pos_frame, textvariable=self.guide_x_var, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Scale(guide_pos_frame, from_=-1000, to=1000, variable=self.guide_x_var,
-                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        guide_pos_frame2 = ttk.Frame(guide_frame)
-        guide_pos_frame2.pack(fill=tk.X, pady=2)
-        ttk.Label(guide_pos_frame2, text="框Y:").pack(side=tk.LEFT)
-        self.guide_y_var = tk.IntVar(value=0)
-        ttk.Entry(guide_pos_frame2, textvariable=self.guide_y_var, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Scale(guide_pos_frame2, from_=-1000, to=1000, variable=self.guide_y_var,
-                 orient=tk.HORIZONTAL, command=self.on_guide_pos_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        guide_size_frame = ttk.Frame(guide_frame)
-        guide_size_frame.pack(fill=tk.X, pady=2)
-        ttk.Label(guide_size_frame, text="宽:").pack(side=tk.LEFT)
-        self.guide_w_var = tk.IntVar(value=800)
-        ttk.Entry(guide_size_frame, textvariable=self.guide_w_var, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Scale(guide_size_frame, from_=100, to=2000, variable=self.guide_w_var,
-                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
-        guide_size_frame2 = ttk.Frame(guide_frame)
-        guide_size_frame2.pack(fill=tk.X, pady=2)
-        ttk.Label(guide_size_frame2, text="高:").pack(side=tk.LEFT)
-        self.guide_h_var = tk.IntVar(value=600)
-        ttk.Entry(guide_size_frame2, textvariable=self.guide_h_var, width=6).pack(side=tk.LEFT, padx=2)
-        ttk.Scale(guide_size_frame2, from_=100, to=2000, variable=self.guide_h_var,
-                 orient=tk.HORIZONTAL, command=self.on_guide_size_change).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
-        
         # 绑定方向键
         self.root.bind("<Up>", self.on_key_up)
         self.root.bind("<Down>", self.on_key_down)
@@ -402,10 +408,6 @@ class ControlPanel:
         self.root.bind("<Shift-Down>", self.on_shift_key_down)
         self.root.bind("<Shift-Left>", self.on_shift_key_left)
         self.root.bind("<Shift-Right>", self.on_shift_key_right)
-        
-        # === 状态栏 ===
-        self.status_label = ttk.Label(main_frame, text="就绪")
-        self.status_label.pack(fill=tk.X, pady=5)
         
         # 定时更新UI
         self.update_ui()
@@ -481,35 +483,100 @@ class ControlPanel:
     # ==================== 摄像头管理 ====================
     
     def refresh_cameras(self):
-        """刷新RGB摄像头列表"""
+        """刷新RGB摄像头列表 - 通过系统API直接枚举设备"""
         self.available_cameras = []
         
-        # 尝试获取摄像头名称（Windows平台）
-        camera_names = {}
         try:
             import subprocess
-            # 使用 PowerShell 获取摄像头名称
+            # 使用 PowerShell + WMI 直接枚举视频输入设备（DirectShow设备）
+            # 这会返回设备的索引和名称，无需暴力扫描
+            ps_script = '''
+            Add-Type -TypeDefinition @"
+            using System;
+            using System.Runtime.InteropServices;
+            using System.Runtime.InteropServices.ComTypes;
+            
+            [ComImport, Guid("29840822-5B84-11D0-BD3B-00A0C911CE86")]
+            public class SystemDeviceEnum { }
+            
+            [ComImport, Guid("29840820-5B84-11D0-BD3B-00A0C911CE86"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+            public interface ICreateDevEnum {
+                int CreateClassEnumerator([In] ref Guid type, out IEnumMoniker enumMoniker, int flags);
+            }
+            
+            public class DirectShowDevices {
+                public static string[] GetVideoInputDevices() {
+                    var devices = new System.Collections.Generic.List<string>();
+                    var CLSID_VideoInputDeviceCategory = new Guid("860BB310-5D01-11D0-BD3B-00A0C911CE86");
+                    var devEnum = (ICreateDevEnum)new SystemDeviceEnum();
+                    IEnumMoniker enumMoniker;
+                    if (devEnum.CreateClassEnumerator(ref CLSID_VideoInputDeviceCategory, out enumMoniker, 0) == 0) {
+                        var moniker = new IMoniker[1];
+                        while (enumMoniker.Next(1, moniker, IntPtr.Zero) == 0) {
+                            IPropertyBag propertyBag;
+                            Guid bagId = typeof(IPropertyBag).GUID;
+                            moniker[0].BindToStorage(null, null, ref bagId, out object bagObj);
+                            propertyBag = (IPropertyBag)bagObj;
+                            object val;
+                            propertyBag.Read("FriendlyName", out val, null);
+                            devices.Add(val.ToString());
+                            Marshal.ReleaseComObject(moniker[0]);
+                        }
+                    }
+                    return devices.ToArray();
+                }
+            }
+"@
+            $devices = [DirectShowDevices]::GetVideoInputDevices()
+            for ($i = 0; $i -lt $devices.Count; $i++) {
+                Write-Output "$i|$($devices[$i])"
+            }
+            '''
+            result = subprocess.run(
+                ['powershell', '-Command', ps_script],
+                capture_output=True, text=True, timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                for line in result.stdout.strip().split('\n'):
+                    line = line.strip()
+                    if '|' in line:
+                        parts = line.split('|', 1)
+                        idx = int(parts[0])
+                        name = parts[1]
+                        self.available_cameras.append({'id': idx, 'name': name})
+        except Exception:
+            # 如果系统枚举失败，回退到简单的 PnP 设备查询
+            self._refresh_cameras_fallback()
+            return
+        
+        if self.available_cameras:
+            values = [cam['name'] for cam in self.available_cameras]
+            self.camera_combo['values'] = values
+            self.camera_combo.current(0)
+        else:
+            self.camera_combo['values'] = ["未检测到摄像头"]
+            self.camera_var.set("未检测到摄像头")
+        
+        self.status_label.config(text=f"检测到 {len(self.available_cameras)} 个RGB摄像头")
+    
+    def _refresh_cameras_fallback(self):
+        """回退方案：使用PnP设备查询"""
+        self.available_cameras = []
+        try:
+            import subprocess
             result = subprocess.run(
                 ['powershell', '-Command', 
                  'Get-PnpDevice -Class Camera -Status OK | Select-Object -ExpandProperty FriendlyName'],
-                capture_output=True, text=True, timeout=5
+                capture_output=True, text=True, timeout=5,
+                creationflags=subprocess.CREATE_NO_WINDOW
             )
             if result.returncode == 0:
                 names = [n.strip() for n in result.stdout.strip().split('\n') if n.strip()]
                 for i, name in enumerate(names):
-                    camera_names[i] = name
+                    self.available_cameras.append({'id': i, 'name': name})
         except Exception:
             pass
-        
-        for i in range(10):
-            cap = cv2.VideoCapture(i, cv2.CAP_DSHOW)
-            if cap.isOpened():
-                ret, _ = cap.read()
-                if ret:
-                    # 使用获取的名称或默认名称
-                    name = camera_names.get(len(self.available_cameras), f"摄像头 {i}")
-                    self.available_cameras.append({'id': i, 'name': name})
-                cap.release()
         
         if self.available_cameras:
             values = [cam['name'] for cam in self.available_cameras]
@@ -851,15 +918,13 @@ class ControlPanel:
         else:
             self.preview_toggle_btn.config(text="显示: 原始")
     
-    def on_preview_size_change(self, event=None):
-        """预览大小改变"""
-        size_str = self.preview_size_var.get()
-        try:
-            w, h = map(int, size_str.split('x'))
-            self.preview_size = (w, h)
-            self.preview_canvas.config(width=w, height=h)
-        except:
-            pass
+    def on_preview_scale_change(self, value=None):
+        """预览大小滑动条改变（固定16:9比例）"""
+        w = int(self.preview_scale_var.get())
+        h = int(w * 9 / 16)  # 16:9 比例
+        self.preview_size = (w, h)
+        self.preview_canvas.config(width=w, height=h)
+        self.preview_size_label.config(text=f"{w}x{h}")
     
     # ==================== 辅助框控制 ====================
     
