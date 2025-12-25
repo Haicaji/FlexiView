@@ -1,8 +1,9 @@
 # 配置文件
 flexi_view_config.json
+configs/
 
-# 测试目录
-face/
+# 用户上传文件
+uploads/
 
 # Python
 __pycache__/
@@ -55,3 +56,13 @@ desktop.ini
 *.tmp
 *.temp
 *.bak
+
+# 前端
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*

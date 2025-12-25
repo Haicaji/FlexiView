@@ -8,13 +8,15 @@ FlexiView - 灵活的视频/图像显示控制程序
 主入口文件
 """
 
-from flexi_view import ControlPanel
+from flexi_view.web_server import run_server
 
 
 def main():
     """程序入口"""
-    app = ControlPanel()
-    app.run()
+    print("Starting FlexiView Web Server...")
+    print("Please ensure you have built the frontend: cd frontend && npm install && npm run build")
+    print("Access the UI at http://localhost:8000")
+    run_server()
 
 
 if __name__ == "__main__":

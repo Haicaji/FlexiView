@@ -1,5 +1,11 @@
 # FlexiView 依赖包
 
+# Web Server
+fastapi>=0.100.0
+uvicorn>=0.20.0
+python-multipart>=0.0.6
+aiofiles>=23.0.0
+
 # 核心依赖
 opencv-python>=4.8.0
 numpy>=1.24.0

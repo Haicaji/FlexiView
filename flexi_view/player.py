@@ -26,6 +26,8 @@ class VideoPlayer:
         self.source_type = None  # 'video', 'image', 'camera', 'ir_camera'
         self.static_frame = None
         self.play_thread = None
+        self.load_lock = threading.Lock()
+        self.cap_lock = threading.Lock() # Lock for video capture access
         
         # 红外摄像头相关
         self.ir_controller = None
@@ -33,124 +35,131 @@ class VideoPlayer:
     
     def load_video(self, path):
         """加载视频文件"""
-        self.stop()  # 先停止播放
-        self.stop_ir_camera()  # 确保关闭红外摄像头
-        if self.cap is not None:
-            self.cap.release()
-        
-        self.cap = cv2.VideoCapture(path)
-        if not self.cap.isOpened():
-            return False
-        
-        self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
-        self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
-        self.current_frame_idx = 0
-        self.source_type = 'video'
-        
-        # 读取第一帧预览
-        ret, frame = self.cap.read()
-        if ret:
-            self.display.set_frame(frame)
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-        
-        return True
+        with self.load_lock:
+            self.stop()  # 先停止播放
+            self.stop_ir_camera()  # 确保关闭红外摄像头
+            if self.cap is not None:
+                self.cap.release()
+            
+            self.cap = cv2.VideoCapture(path)
+            if not self.cap.isOpened():
+                return False
+            
+            self.total_frames = int(self.cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            self.fps = self.cap.get(cv2.CAP_PROP_FPS) or 30
+            self.current_frame_idx = 0
+            self.source_type = 'video'
+            
+            # 读取第一帧预览
+            ret, frame = self.cap.read()
+            if ret:
+                self.display.set_frame(frame)
+                self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+            
+            return True
     
     def load_image(self, path):
         """加载图像文件"""
-        self.stop()
-        self.stop_ir_camera()  # 确保关闭红外摄像头
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
-        
-        frame = cv2.imread(path)
-        if frame is None:
-            return False
-        
-        self.static_frame = frame
-        self.source_type = 'image'
-        self.display.set_frame(frame)
-        return True
+        with self.load_lock:
+            self.stop()
+            self.stop_ir_camera()  # 确保关闭红外摄像头
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
+            
+            frame = cv2.imread(path)
+            if frame is None:
+                return False
+            
+            self.static_frame = frame
+            self.source_type = 'image'
+            self.display.set_frame(frame)
+            return True
     
     def load_camera(self, camera_id=0):
         """加载摄像头，并自动检测分辨率"""
-        self.stop()  # 先停止播放
-        self.stop_ir_camera()  # 确保关闭红外摄像头
-        if self.cap is not None:
-            self.cap.release()
+        with self.load_lock:
+            self.stop()  # 先停止播放
+            self.stop_ir_camera()  # 确保关闭红外摄像头
+            if self.cap is not None:
+                self.cap.release()
 
-        self.cap = cv2.VideoCapture(camera_id)
-        if not self.cap.isOpened():
-            return False
+            self.cap = cv2.VideoCapture(camera_id)
+            if not self.cap.isOpened():
+                return False
 
-        # 自动检测支持的最大分辨率
-        # 常见分辨率从高到低尝试
-        common_res = [
-            (1920, 1080), (1280, 720), (1024, 576), (800, 600), (640, 480)
-        ]
-        for w, h in common_res:
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
-            actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            if abs(actual_w - w) < 10 and abs(actual_h - h) < 10:
-                break
+            # 自动检测支持的最大分辨率
+            # 常见分辨率从高到低尝试
+            common_res = [
+                (1920, 1080), (1280, 720), (1024, 576), (800, 600), (640, 480)
+            ]
+            for w, h in common_res:
+                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+                actual_w = int(self.cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                actual_h = int(self.cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                if abs(actual_w - w) < 10 and abs(actual_h - h) < 10:
+                    break
 
-        self.fps = 30
-        self.source_type = 'camera'
-        return True
+            self.fps = 30
+            self.source_type = 'camera'
+            return True
     
     def load_ir_camera(self, device_index=0):
         """加载红外摄像头"""
         if not IR_CAMERA_AVAILABLE:
             return False, "红外摄像头功能不可用（需要安装 winrt 相关包）"
         
-        self.stop()
-        if self.cap is not None:
-            self.cap.release()
-            self.cap = None
-        
-        # 创建红外摄像头控制器
-        self.ir_controller = IRCameraController()
-        self.ir_loop = asyncio.new_event_loop()
-        
-        try:
-            # 查找设备
-            devices = self.ir_loop.run_until_complete(self.ir_controller.find_ir_cameras())
-            if not devices:
+        with self.load_lock:
+            self.stop()
+            if self.cap is not None:
+                self.cap.release()
+                self.cap = None
+            
+            # 创建红外摄像头控制器
+            self.ir_controller = IRCameraController()
+            self.ir_loop = asyncio.new_event_loop()
+            
+            try:
+                # 查找设备
+                devices = self.ir_loop.run_until_complete(self.ir_controller.find_ir_cameras())
+                if not devices:
+                    self.ir_controller = None
+                    self.ir_loop.close()
+                    self.ir_loop = None
+                    return False, "未找到红外摄像头"
+                
+                if device_index >= len(devices):
+                    self.ir_controller = None
+                    self.ir_loop.close()
+                    self.ir_loop = None
+                    return False, "无效的设备索引"
+                
+                # 选择设备
+                if not self.ir_loop.run_until_complete(self.ir_controller.select_device(device_index)):
+                    self.ir_controller = None
+                    self.ir_loop.close()
+                    self.ir_loop = None
+                    return False, "无法初始化红外摄像头"
+                
+                # 开始捕获
+                if not self.ir_loop.run_until_complete(self.ir_controller.start()):
+                    self.ir_controller = None
+                    self.ir_loop.close()
+                    self.ir_loop = None
+                    return False, "无法启动红外摄像头捕获"
+                
+                self.fps = 30
+                self.source_type = 'ir_camera'
+                
+                return True, f"已连接: {devices[device_index].display_name}"
+                
+            except Exception as e:
+                if self.ir_loop:
+                    self.ir_loop.close()
+                    self.ir_loop = None
                 self.ir_controller = None
-                self.ir_loop.close()
-                self.ir_loop = None
-                return False, "未找到红外摄像头设备"
-            
-            # 选择设备
-            if device_index >= len(devices):
-                device_index = 0
-            
-            if not self.ir_loop.run_until_complete(self.ir_controller.select_device(device_index)):
-                self.ir_controller = None
-                self.ir_loop.close()
-                self.ir_loop = None
-                return False, "无法初始化红外摄像头"
-            
-            # 开始捕获
-            if not self.ir_loop.run_until_complete(self.ir_controller.start()):
-                self.ir_controller = None
-                self.ir_loop.close()
-                self.ir_loop = None
-                return False, "无法启动红外摄像头捕获"
-            
-            self.fps = 30
-            self.source_type = 'ir_camera'
-            
-            return True, f"已连接: {devices[device_index].display_name}"
-            
-        except Exception as e:
-            if self.ir_loop:
-                self.ir_loop.close()
-                self.ir_loop = None
-            self.ir_controller = None
-            return False, f"红外摄像头错误: {str(e)}"
+                return False, f"红外摄像头错误: {str(e)}"
     
     def stop_ir_camera(self):
         """停止红外摄像头并释放系统资源"""
@@ -226,13 +235,16 @@ class VideoPlayer:
     
     def seek(self, frame_idx):
         """跳转到指定帧"""
-        if self.cap is not None and self.source_type == 'video':
-            self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-            self.current_frame_idx = frame_idx
-            ret, frame = self.cap.read()
-            if ret:
-                self.display.set_frame(frame)
+        with self.cap_lock:
+            if self.cap is not None and self.source_type == 'video':
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                self.current_frame_idx = frame_idx
+                ret, frame = self.cap.read()
+                if ret:
+                    self.display.set_frame(frame)
+                    # 注意：read() 会推进一帧，所以如果想停在 seek 的位置，可能需要再 set 一次
+                    # 或者就让它从下一帧开始播
+                    # self.cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
     
     def _play_loop(self):
         """播放循环"""
@@ -265,17 +277,27 @@ class VideoPlayer:
             
             start_time = time.time()
             
-            ret, frame = self.cap.read()
+            ret = False
+            frame = None
+            
+            with self.cap_lock:
+                if self.cap is not None:
+                    ret, frame = self.cap.read()
+            
             if not ret:
                 if self.loop and self.source_type == 'video':
-                    self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    with self.cap_lock:
+                        if self.cap is not None:
+                            self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     self.current_frame_idx = 0
                     continue
                 else:
                     self.playing = False
                     break
             
-            self.current_frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            if self.source_type == 'video':
+                self.current_frame_idx = int(self.cap.get(cv2.CAP_PROP_POS_FRAMES))
+            
             self.display.set_frame(frame)
             
             # 帧率控制
@@ -289,3 +311,10 @@ class VideoPlayer:
         self.stop_ir_camera()
         if self.cap is not None:
             self.cap.release()
+    
+    def clear(self):
+        """清空显示"""
+        self.stop()
+        self.stop_ir_camera()
+        self.source_type = None
+        self.display.set_frame(None)

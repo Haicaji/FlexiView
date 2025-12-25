@@ -53,7 +53,12 @@ class DisplayWindow:
     
     def create_window(self):
         """创建显示窗口"""
-        cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        # 尝试使用不同的后端，或者不指定后端
+        try:
+            cv2.namedWindow(self.window_name, cv2.WINDOW_NORMAL)
+        except cv2.error:
+            # 如果默认后端失败，尝试不带标志
+            cv2.namedWindow(self.window_name)
         
         # 先移动窗口到目标显示器
         cv2.moveWindow(self.window_name, self.target_monitor.x + 100, self.target_monitor.y + 100)
