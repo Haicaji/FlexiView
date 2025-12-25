@@ -13,14 +13,15 @@ screeninfo>=0.8.1
 Pillow>=10.0.0
 
 # 红外摄像头支持 (仅 Windows 平台)
-# 如果需要使用红外摄像头功能，请安装以下包：
-winrt-Windows.Devices.Enumeration
-winrt-Windows.Media.Capture
-winrt-Windows.Media.Capture.Frames
-winrt-Windows.Graphics.Imaging
-winrt-Windows.Foundation
-winrt-Windows.Foundation.Collections
-winrt-Windows.Storage.Streams
+# 如果需要使用红外摄像头功能，请在 Windows 平台安装以下包。
+# 使用环境标记确保在 Linux/macOS 上自动跳过（避免构建失败）。
+winrt-Windows.Devices.Enumeration; platform_system == "Windows"
+winrt-Windows.Media.Capture; platform_system == "Windows"
+winrt-Windows.Media.Capture.Frames; platform_system == "Windows"
+winrt-Windows.Graphics.Imaging; platform_system == "Windows"
+winrt-Windows.Foundation; platform_system == "Windows"
+winrt-Windows.Foundation.Collections; platform_system == "Windows"
+winrt-Windows.Storage.Streams; platform_system == "Windows"
 
 # 可选：如果需要更多视频格式支持
 # opencv-contrib-python>=4.8.0
