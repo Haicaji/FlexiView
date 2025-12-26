@@ -137,7 +137,11 @@ def get_status():
             "width": app_state.guide_rect_width,
             "height": app_state.guide_rect_height
         },
-        "ir_available": IR_CAMERA_AVAILABLE
+        "ir_available": IR_CAMERA_AVAILABLE,
+        "ir_config": {
+            "filter_mode": app_state.player.ir_controller.frame_filter.name if app_state.player.ir_controller else "NONE",
+            "mapping_mode": app_state.player.ir_controller.mapping_mode.name if app_state.player.ir_controller else "NONE"
+        }
     }
 
 @app.get("/api/files")
@@ -260,6 +264,13 @@ def list_cameras():
             available_cameras.append({'id': idx, 'name': name})
             cap.release()
     return {"cameras": available_cameras}
+
+@app.get("/api/monitors")
+def list_monitors():
+    """获取所有可用的显示器列表"""
+    monitor_info = app_state.display.get_monitor_info()
+    monitors = [{"index": idx, "name": name} for idx, name in monitor_info]
+    return {"monitors": monitors}
 
 @app.post("/api/play_camera")
 def play_camera(config: CameraConfig):

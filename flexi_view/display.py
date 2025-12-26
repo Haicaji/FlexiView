@@ -28,7 +28,8 @@ class DisplayWindow:
         self.background_color = (0, 0, 0)  # 背景颜色
         self.mirror_h = False  # 水平镜像
         self.mirror_v = False  # 垂直镜像
-        
+        self.monitor_changed = False # 标记显示器是否改变
+
         # 智能选择显示器：如果有多个显示器，默认用第二个；否则用第一个
         if len(self.monitors) > 1:
             self.update_monitor(monitor_index)
@@ -45,6 +46,7 @@ class DisplayWindow:
         else:
             self.target_monitor = self.monitors[0]
             self.monitor_index = 0
+        self.monitor_changed = True
     
     def get_monitor_info(self):
         """获取所有显示器信息"""
@@ -152,6 +154,10 @@ class DisplayWindow:
         self.running = True
         
         while self.running:
+            if self.monitor_changed:
+                self.create_window()
+                self.monitor_changed = False
+
             with self.lock:
                 current_frame = self.frame.copy() if self.frame is not None else None
             

@@ -188,6 +188,7 @@ function App() {
   const [files, setFiles] = useState([]);
   const [cameras, setCameras] = useState([]);
   const [irCameras, setIrCameras] = useState([]);
+  const [monitors, setMonitors] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [activeTab, setActiveTab] = useState('files'); // 'files', 'camera', 'ir'
   const [isSeeking, setIsSeeking] = useState(false);
@@ -202,6 +203,7 @@ function App() {
     fetchFiles();
     fetchCameras();
     fetchIrCameras();
+    fetchMonitors();
     return () => clearInterval(interval);
   }, []);
 
@@ -247,6 +249,15 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to fetch IR cameras", err);
+    }
+  };
+
+  const fetchMonitors = async () => {
+    try {
+      const res = await axios.get(`${API_BASE}/monitors`);
+      setMonitors(res.data.monitors);
+    } catch (err) {
+      console.error("Failed to fetch monitors", err);
     }
   };
 
@@ -588,6 +599,7 @@ function App() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">过滤模式</label>
                       <select 
                         className="w-full border rounded p-2"
+                        value={status.ir_config?.filter_mode || 'NONE'}
                         onChange={(e) => updateIrConfig({ camera_index: 0, filter_mode: e.target.value })}
                       >
                         <option value="NONE">全部帧</option>
@@ -599,6 +611,7 @@ function App() {
                       <label className="block text-sm font-medium text-gray-700 mb-1">颜色映射</label>
                       <select 
                         className="w-full border rounded p-2"
+                        value={status.ir_config?.mapping_mode || 'NONE'}
                         onChange={(e) => updateIrConfig({ camera_index: 0, mapping_mode: e.target.value })}
                       >
                         <option value="NONE">原始</option>
@@ -638,6 +651,21 @@ function App() {
              </div>
           </div>
           
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">选择屏幕</label>
+            <select
+              value={status.display.monitor_index}
+              onChange={(e) => updateDisplay({ monitor_index: parseInt(e.target.value) })}
+              className="w-full border rounded p-2"
+            >
+              {monitors.map((m) => (
+                <option key={m.index} value={m.index}>
+                  {m.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">缩放: {status.display.scale.toFixed(2)}</label>
             <input 
